@@ -1,7 +1,7 @@
 # TrafficPredict
-This repository is forked by {https://github.com/huang-xx/TrafficPredict}
+This repository is forked by (https://github.com/huang-xx/TrafficPredict).
 The objective of this repo. is for studying 'trajectory prediction' field.
-Original paper is [TrafficPredict: Trajectory Prediction for Heterogeneous Traffic-Agents](https://arxiv.org/abs/1811.02146) (AAAI), Oral, 2019
+Original paper is [TrafficPredict: Trajectory Prediction for Heterogeneous Traffic-Agents](https://arxiv.org/abs/1811.02146) (AAAI), Oral, 2019.
 
 ## Comparison of results:
 |   Methods  | Paper  ADE | This repo ADE | Paper  FDE | This repo FDE |
