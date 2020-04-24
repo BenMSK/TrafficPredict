@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import argparse
 import logging
 import os
@@ -21,7 +22,7 @@ def main():
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
 
-    # RNN size
+    # RNN size// NOTE: Hidden state size
     parser.add_argument(
         "--node_rnn_size",
         type=int,
@@ -35,7 +36,7 @@ def main():
         help="Size of Human Human Edge RNN hidden state",
     )
 
-    # Input and output size
+    # Input and output size,// NODE: [x,y,type], EDGE_ij: [ xj-xi, yj-yi, (ci, cj) ]
     parser.add_argument(
         "--node_input_size", type=int, default=3, help="Dimension of the node features"
     )
@@ -43,13 +44,13 @@ def main():
         "--edge_input_size",
         type=int,
         default=3,
-        help="Dimension of the edge features, the 3th parameter is set to 10",
+        help="Dimension of the edge features, the 3rd parameter is set to 10",
     )
     parser.add_argument(
         "--node_output_size", type=int, default=5, help="Dimension of the node output"
     )
 
-    # Embedding size
+    # Embedding size// Just Linear layer
     parser.add_argument(
         "--node_embedding_size",
         type=int,
@@ -67,16 +68,16 @@ def main():
     parser.add_argument("--attention_size", type=int, default=64, help="Attention size")
 
     # Sequence length
-    parser.add_argument("--seq_length", type=int, default=10, help="Sequence length")
+    parser.add_argument("--seq_length", type=int, default=6, help="Sequence length")#history trajectory 
     parser.add_argument(
-        "--pred_length", type=int, default=6, help="Predicted sequence length"
+        "--pred_length", type=int, default=10, help="Predicted sequence length"#future trajectory
     )
 
     # Batch size
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
 
     # Number of epochs
-    parser.add_argument("--num_epochs", type=int, default=300, help="number of epochs")
+    parser.add_argument("--num_epochs", type=int, default=100, help="number of epochs")#default: 300
 
     # Gradient value at which it should be clipped
     parser.add_argument(
@@ -87,12 +88,12 @@ def main():
         "--lambda_param",
         type=float,
         default=0.00005,
-        help="L2 regularization parameter",
+        help="L2 regularization parameter",#//Ridge
     )
 
     # Learning rate parameter
     parser.add_argument(
-        "--learning_rate", type=float, default=0.01, help="learning rate"
+        "--learning_rate", type=float, default=0.001, help="learning rate"
     )
     # Decay rate for the learning rate parameter
     parser.add_argument(
@@ -113,6 +114,8 @@ def main():
 
 
 def train(args):
+    print("INPUT SEQUENCE LENGTH: {}".format(args.seq_length))
+    print("OUTPUT SEQUENCE LENGTH: {}".format(args.pred_length))
     # Construct the DataLoader object
     dataloader = DataLoader(args.batch_size, args.seq_length + 1, forcePreProcess=False)
     # Construct the ST-graph object
@@ -126,15 +129,17 @@ def train(args):
     log_file = open(os.path.join(log_directory, "val.txt"), "w")
 
     # Save directory
-    save_directory = "../save/"
+    save_directory = "../../save_weight/"
 
-    # Open the configuration file
+    # Open the configuration file # 현재 argument 세팅 저장.
     with open(os.path.join(save_directory, "config.pkl"), "wb") as f:
         pickle.dump(args, f)
 
     # Path to store the checkpoint file
     def checkpoint_path(x):
-        return os.path.join(save_directory, "srnn_model_" + str(x) + ".tar")
+        return os.path.join(save_directory, "4Dgraph-{}-{}-srnn_model_"\
+                            .format(args.seq_length, args.pred_length)\
+                            + str(x) + ".tar")
 
     # Initialize net
     net = SRNN(args)
@@ -149,27 +154,27 @@ def train(args):
     best_epoch = 0
     # Training
     for epoch in range(args.num_epochs):
-        dataloader.reset_batch_pointer(valid=False)
+        dataloader.reset_batch_pointer(valid=False)# Initialization
         loss_epoch = 0
 
         # For each batch
         # dataloader.num_batches = 10. 1 epoch have 10 batches
         for batch in range(dataloader.num_batches):
             start = time.time()
-            # Get batch data
+            # Get batch data, mini-batch
             x, _, _, d = dataloader.next_batch(randomUpdate=True)
 
             # Loss for this batch
             loss_batch = 0
 
             # For each sequence in the batch
-            for sequence in range(dataloader.batch_size):
+            for sequence in range(dataloader.batch_size):#미니 배치에 있는 각 sequence 데이터에 대한 처리.
                 # Construct the graph for the current sequence
                 stgraph.readGraph([x[sequence]])
-                nodes, edges, nodesPresent, edgesPresent = stgraph.getSequence()
+                nodes, edges, nodesPresent, edgesPresent = stgraph.getSequence()#미니 배치에 있는 각 sequence의 graph 정보.
                 # Convert to cuda variables
                 nodes = Variable(torch.from_numpy(nodes).float())
-                # nodes[0] represent all the person's corrdinate show up in  frame 0.
+                # nodes[0] represent all the person(object)'s corrdinate show up in frame 0.
                 if args.use_cuda:
                     nodes = nodes.cuda()
                 edges = Variable(torch.from_numpy(edges).float())
@@ -203,7 +208,7 @@ def train(args):
                 if args.use_cuda:
                     cell_states_edge_RNNs = cell_states_edge_RNNs.cuda()
 
-                hidden_states_super_node_RNNs = Variable(
+                hidden_states_super_node_RNNs = Variable(#NOTE: 0 for peds., 1 for Bic., 2 for Veh.
                     torch.zeros(3, args.node_rnn_size)
                 )
                 if args.use_cuda:
@@ -231,9 +236,10 @@ def train(args):
                         cell_states_super_node_Edge_RNNs.cuda()
                     )
 
-                # Zero out the gradients
+                # Zero out the gradients // Initialization Step
                 net.zero_grad()
                 optimizer.zero_grad()
+                
                 # Forward prop
                 outputs, _, _, _, _, _, _, _, _, _ = net(
                     nodes[: args.seq_length],
@@ -269,7 +275,7 @@ def train(args):
                 stgraph.reset()
 
             end = time.time()
-            loss_batch = loss_batch / dataloader.batch_size
+            loss_batch = loss_batch / dataloader.batch_size##### NOTE: Expected Loss; E[L]
             loss_epoch += loss_batch
 
             logging.info(
@@ -286,7 +292,7 @@ def train(args):
         # Log it
         log_file_curve.write(str(epoch) + "," + str(loss_epoch) + ",")
 
-        # Validation
+        #####################     Validation Part     #####################
         dataloader.reset_batch_pointer(valid=True)
         loss_epoch = 0
 
@@ -389,7 +395,7 @@ def train(args):
                 # Reset the stgraph
                 stgraph.reset()
 
-            loss_batch = loss_batch / dataloader.batch_size
+            loss_batch = loss_batch / dataloader.batch_size#### NOTE: Expected Loss; E[L]
             loss_epoch += loss_batch
 
         loss_epoch = loss_epoch / dataloader.valid_num_batches

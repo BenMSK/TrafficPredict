@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging
 import os
 import pickle
@@ -39,6 +40,7 @@ class DataLoader:
         self, batch_size=50, seq_length=10, forcePreProcess=False, infer=False
     ):
         """
+        It uses APOL dataset!NOTE
         Initialiser function for the DataLoader class
         params:
         batch_size : Size of the mini-batch
@@ -50,12 +52,12 @@ class DataLoader:
         np.random.seed(42)
         # List of data directories where raw data resides
         self.data_dirs = "../data/prediction_train/"
-        self.dataset_cnt = len(os.listdir(self.data_dirs))
-        self.dataset_idx = sorted(os.listdir(self.data_dirs))
-        np.random.shuffle(self.dataset_idx)
-        self.train_data_dirs = self.dataset_idx[: int(self.dataset_cnt * 0.9)]
-        if infer == True:
-            self.train_data_dirs = self.dataset_idx[int(self.dataset_cnt * 0.9) :]
+        self.dataset_cnt = len(os.listdir(self.data_dirs))# Ben: Get the number of all data in 'data_dirs'
+        self.dataset_idx = sorted(os.listdir(self.data_dirs))# Ben: Sort the data name by alphabet order
+        np.random.shuffle(self.dataset_idx)# Shuffle the training data
+        self.train_data_dirs = self.dataset_idx[: int(self.dataset_cnt * 0.9)]# Ben: 90% is used in TRAINING
+        if infer == True:# Only in test 
+            self.train_data_dirs = self.dataset_idx[int(self.dataset_cnt * 0.9) :]# Ben: 10% is used for INFER
         self.infer = infer
 
         # Store the arguments
@@ -70,7 +72,7 @@ class DataLoader:
 
         # If the file doesn't exist or forcePreProcess is true
         if not (os.path.exists(data_file)) or forcePreProcess:
-            print("Creating pre-processed data from raw data")
+            print("Creating pre-processed data from raw data")# .ckpl file is generated
             # Preprocess the data from the csv files of the datasets
             # Note that this data is processed in frames
             self.frame_preprocess(self.train_data_dirs, data_file)
@@ -81,12 +83,12 @@ class DataLoader:
         self.reset_batch_pointer(valid=False)
         self.reset_batch_pointer(valid=True)
 
-    def class_objtype(self, object_type):
-        if object_type == 1 or object_type == 2:
+    def class_objtype(self, object_type):#논문에서 c_i
+        if object_type == 1 or object_type == 2:#Vehicle
             return 3
-        elif object_type == 3:
+        elif object_type == 3:#Pedestrian
             return 1
-        elif object_type == 4:
+        elif object_type == 4:#Bicycle
             return 2
         else:
             return -1
@@ -142,6 +144,7 @@ class DataLoader:
             data[:, 4] = (
                 (data[:, 4] - min(data[:, 4])) / (max(data[:, 4]) - min(data[:, 4]))
             ) * 2 - 1
+            --> Ben: scaling each position
             """
             data[:, 3] = (
                 (data[:, 3] - min_position_x) / (max_position_x - min_position_x)
@@ -150,13 +153,13 @@ class DataLoader:
                 (data[:, 4] - min_position_y) / (max_position_y - min_position_y)
             ) * 2 - 1
 
-            data = data[~(data[:, 2] == 5)]
+            data = data[~(data[:, 2] == 5)]#Ben: DO NOT CONSIDER 'others' OBJECT.
 
             # Frame IDs of the frames in the current dataset
             frameList = np.unique(data[:, 0]).tolist()
-            numFrames = len(frameList)
+            numFrames = len(frameList)# Total frame
 
-            # Add the list of frameIDs to the frameList_data
+            # Add the list of frameIDs to the frameList_data 'for each .txt file'
             frameList_data.append(frameList)
             # Initialize the list of numPeds for the current dataset
             numPeds_data.append([])
@@ -178,7 +181,7 @@ class DataLoader:
                 pedsInFrame = data[data[:, 0] == frame, :]
 
                 # Extract peds list
-                pedsList = pedsInFrame[:, 1].tolist()
+                pedsList = pedsInFrame[:, 1].tolist()# Get the pedsID
 
                 # Add number of peds in the current frame to the stored data
                 numPeds_data[dataset_index].append(len(pedsList))
@@ -186,13 +189,13 @@ class DataLoader:
                 # Initialize the row of the numpy array
                 pedsWithPos = []
                 # For each ped in the current frame
-                for ped in pedsList:
+                for ped in pedsList:#get all ped in the current frame
                     # Extract their x and y positions
                     current_x = pedsInFrame[pedsInFrame[:, 1] == ped, 3][0]
                     current_y = pedsInFrame[pedsInFrame[:, 1] == ped, 4][0]
                     current_type = self.class_objtype(
                         int(pedsInFrame[pedsInFrame[:, 1] == ped, 2][0])
-                    )
+                    )# object type
                     # print('current_type    {}'.format(current_type))
                     # Add their pedID, x, y to the row of the numpy array
                     pedsWithPos.append([ped, current_x, current_y, current_type])
@@ -215,12 +218,22 @@ class DataLoader:
             protocol=2,
         )
         f.close()
-
+        #all_frame_data: 각 데이터 .txt 파일에서, current frame에서의 peds' Info.
+        #                --> = [ [ [0번 frame peds'Info], [1번 frame peds'Info], ... ] ], #1.txt파일
+        #                        [ [0번 frame peds'Info], [1번 frame peds'Info], ... ] ], #2.txt파일
+        #                                            ......
+        #frameList_data:  각 데이터 .txt 파일에 존재하는 frame. = [1.txt의 frame id들, 2.txt의 frame id들, .... ]
+        #numPeds_data:  각 데이터 .txt 파일에서, 그 파일의 어느 frame에 존재하는 ped의 수. 
+        #               --> = [ [1.txt의 0번 frame의 peds 수, 1.txt의 1번 frame의 peds 수, ... ],
+        #                       [2.txt의 0번 frame의 peds 수, 2.txt의 1번 frame의 peds 수, ... ],
+        #                                       .....                                         ]
+        #
     def load_preprocessed(self, data_file):
         """
         Function to load the pre-processed data into the DataLoader object
         params:
         data_file : the path to the pickled data file
+        data정리 및 training, val batchs 설정.
         """
         # Load data from the pickled file
         f = open(data_file, "rb")
@@ -236,7 +249,7 @@ class DataLoader:
 
         # For each dataset
         for dataset in range(len(self.data)):
-            # get the frame data for the current dataset
+            # get the frame data for the current dataset(#.txt)
             all_frame_data = self.data[dataset]
             valid_frame_data = self.valid_data[dataset]
             print(
@@ -280,9 +293,10 @@ class DataLoader:
 
         while i < self.batch_size:
             # Extract the frame data of the current dataset
+            # Mini-batch만큼 설정.
 
-            frame_data = self.data[self.dataset_pointer]
-            frame_ids = self.frameList[self.dataset_pointer]
+            frame_data = self.data[self.dataset_pointer]# Get '#.txt dataset'
+            frame_ids = self.frameList[self.dataset_pointer]# Get frame list of '#.txt dataset'
             # Get the frame pointer for the current dataset
             idx = self.frame_pointer
             # While there is still seq_length number of frames left in the current dataset
@@ -290,7 +304,7 @@ class DataLoader:
             if idx + self.seq_length < len(frame_data):
                 # All the data in this sequence
                 # seq_frame_data = frame_data[idx:idx+self.seq_length+1]
-                seq_source_frame_data = frame_data[idx : idx + self.seq_length]
+                seq_source_frame_data = frame_data[idx : idx + self.seq_length]# index부터 history 길이만큼의 frame data를 모두 가져온다.
                 seq_target_frame_data = frame_data[idx + 1 : idx + self.seq_length + 1]
                 seq_frame_ids = frame_ids[idx : idx + self.seq_length]
 

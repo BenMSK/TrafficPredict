@@ -16,6 +16,7 @@ from helper import (
     get_mean_error_separately,
     getCoef,
     sample_gaussian_2d,
+    visualization,
 )
 from model import SRNN
 from st_graph import ST_GRAPH
@@ -59,11 +60,14 @@ def main():
     net = SRNN(saved_args, True)
     if saved_args.use_cuda:
         net = net.cuda()
-
+    print("SEQ LENGTH: ", saved_args.seq_length)
+    print("PRED LENGTH: ", saved_args.pred_length)
     checkpoint_path = os.path.join(
-        save_directory, "srnn_model_" + str(sample_args.epoch) + ".tar"
+        save_directory, "{}-{}-srnn_model_"\
+        .format(saved_args.seq_length, saved_args.pred_length)\
+         + str(sample_args.epoch) + ".tar"
     )
-
+    
     if os.path.isfile(checkpoint_path):
         print("Loading checkpoint")
         checkpoint = torch.load(checkpoint_path)
@@ -110,7 +114,7 @@ def main():
         if saved_args.use_cuda:
             nodes = nodes.cuda()
             edges = edges.cuda()
-
+        # print(nodes.)
         # Separate out the observed part of the trajectory
         obs_nodes, obs_edges, obs_nodesPresent, obs_edgesPresent = (
             nodes[: sample_args.obs_length],
@@ -118,7 +122,6 @@ def main():
             nodesPresent[: sample_args.obs_length],
             edgesPresent[: sample_args.obs_length],
         )
-
         # Sample function
         ret_nodes, ret_attn = sample(
             obs_nodes,
@@ -132,6 +135,16 @@ def main():
             nodesPresent,
         )
 
+        ###### NOTE: VISUALIZATION;;Ben
+        visualization(
+            ret_nodes.data,
+            nodes.data,
+            nodesPresent[:sample_args.obs_length],
+            nodesPresent[sample_args.obs_length - 1],
+            nodesPresent[sample_args.obs_length :],
+            sample_args.obs_length,
+        )
+        
         # Compute mean and final displacement error
         """
         total_error += get_mean_error(

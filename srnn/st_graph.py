@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 
 from helper import getMagnitudeAndDirection, getVector
@@ -21,16 +22,16 @@ class ST_GRAPH:
         self.nodes = [{} for i in range(self.batch_size)]
         self.edges = [{} for i in range(self.batch_size)]
 
-    def readGraph(self, source_batch):
+    def readGraph(self, source_batch):#mini-batch의 sample sequence에서 graph를 구성하는 과정!
         """
         Main function that constructs the ST graph from the batch data
         params:
         source_batch : List of lists of numpy arrays. Each numpy array corresponds to a frame in the sequence.
         categories:  car --> 3,   2 --> bicycle ,  1 ---> pedestrian
         """
-        for sequence in range(self.batch_size):
+        for sequence in range(self.batch_size):#self.batch_size == 1
             # source_seq is a list of numpy arrays
-            # where each numpy array corresponds to a single frame
+            # where each numpy array corresponds to a single frame//NOTE
             source_seq = source_batch[sequence]
             #  list of frames, every frames may have different number person
             for framenum in range(self.seq_length):
@@ -58,7 +59,7 @@ class ST_GRAPH:
                         )
                     else:
                         self.nodes[sequence][pedID].addPosition(pos, framenum)
-                        # Add Temporal edge between the node at current time-step
+                        # Add 'Temporal edge' between the node at current time-step//NOTE
                         # and the node at previous time-step
                         edge_id = (pedID, pedID)
                         pos_edge = (
@@ -143,20 +144,20 @@ class ST_GRAPH:
         numNodes = len(nodes.keys())
         # print("********************* numNodes {}***********".format(numNodes))
         list_of_nodes = {}
-
+        # print("seq: ", self.seq_length)#### seq_length = obs_length + pred_length
         retNodes = np.zeros((self.seq_length, numNodes, 2))
         retEdges = np.zeros(
             (self.seq_length, numNodes * numNodes, 2)
         )  # Diagonal contains temporal edges
-        retNodePresent = [[] for c in range(self.seq_length)]
-        retEdgePresent = [[] for c in range(self.seq_length)]
+        retNodePresent = [[] for _ in range(self.seq_length)]#c// Only, save the node ID and type
+        retEdgePresent = [[] for _ in range(self.seq_length)]#c
 
         # retNodes_type = [[] for c in range(self.seq_length)]
         # retEdges_type = [[] for c in range(self.seq_length)]
 
         for i, ped in enumerate(nodes.keys()):
             list_of_nodes[ped] = i
-            pos_list = nodes[ped].node_pos_list
+            pos_list = nodes[ped].node_pos_list#해당 노드의 sequence; { frame: (x,y), ... }
             for framenum in range(self.seq_length):
                 if framenum in pos_list:
                     retNodePresent[framenum].append((i, nodes[ped].getType()))

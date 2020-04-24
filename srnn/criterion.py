@@ -19,7 +19,7 @@ def Gaussian2DLikelihood(outputs, targets, nodesPresent, pred_length):
     # Get the observed length
     obs_length = seq_length - pred_length
 
-    # Extract mean, std devs and correlation
+    # Extract mean, std devs and correlation (array)
     mux, muy, sx, sy, corr = getCoef(outputs)
 
     # Compute factors

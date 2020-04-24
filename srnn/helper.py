@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch.autograd import Variable
+import matplotlib.pyplot as plt
 
 
 def getVector(pos_list):
@@ -210,26 +211,178 @@ def get_mean_error(ret_nodes, nodes, assumedNodesPresent, trueNodesPresent, use_
 
     return torch.mean(error)
 
+def visualization(ret_nodes, nodes, historyNodesPresent, assumedNodesPresent, trueNodesPresent, obs_length):#NOTE;; Ben
+    observation_type = ['NONE', 'Pedestrian', 'Bicycle', 'Vehicle']
+
+    assumed_ped_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1]) == 1]
+    hist_ped_NodesPresent = [
+        [m[0] for m in t if int(m[1] == 1)] for t in historyNodesPresent#1==pedestrians;t = frame
+    ]
+    true_ped_NodesPresent = [
+        [m[0] for m in t if int(m[1] == 1)] for t in trueNodesPresent#1==pedestrians;t = frame
+    ]
+
+    assumed_bic_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1]) == 2]
+    hist_bic_NodesPresent = [
+        [m[0] for m in t if int(m[1] == 2)] for t in historyNodesPresent#1==pedestrians;t = frame
+    ]
+    true_bic_NodesPresent = [
+        [m[0] for m in t if int(m[1] == 2)] for t in trueNodesPresent#2==bicycles
+    ]
+
+    assumed_car_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1] == 3)]
+    hist_car_NodesPresent = [
+        [m[0] for m in t if int(m[1] == 3)] for t in historyNodesPresent#1==pedestrians;t = frame
+    ]
+    true_car_NodesPresent = [
+        [m[0] for m in t if int(m[1] == 3)] for t in trueNodesPresent#3==vehicles
+    ]
+
+    total_length = ret_nodes.size()[0]
+    pred_length = total_length - obs_length
+    future_ret_nodes = ret_nodes[obs_length:]
+    future_nodes = nodes[obs_length:]
+
+    ##NOTE: by Ben;;
+    observations = {}
+    results = {}
+    ''' gt_trj = np.zeros((pred_length, 2))
+        ft_trj = np.zeros((pred_length, 2))
+        trj_results = [gt_trj, ft_trj]      '''
+    for tstep in range(obs_length):#### HISTORY DATA GETTER
+        
+        for ped_nodeID in assumed_ped_NodesPresent:
+            if ped_nodeID not in hist_ped_NodesPresent[tstep]:
+                continue
+            true_pos_ped = ret_nodes[tstep, ped_nodeID, :]
+
+            if not ped_nodeID in observations.keys():## By BEN;; NOTE
+                observations[ped_nodeID] = [np.zeros((obs_length, 2)), 1]
+            observations[ped_nodeID][0][tstep,:] = true_pos_ped.cpu().numpy()
+
+        for bic_nodeID in assumed_bic_NodesPresent:
+            if bic_nodeID not in hist_bic_NodesPresent[tstep]:
+                continue
+            true_pos_bic = ret_nodes[tstep, bic_nodeID, :]
+
+            if not bic_nodeID in observations.keys():## By BEN;; NOTE
+                observations[bic_nodeID] = [np.zeros((obs_length, 2)), 2]
+            observations[bic_nodeID][0][tstep,:] = true_pos_bic.cpu().numpy()
+
+        for car_nodeID in assumed_car_NodesPresent:
+            if car_nodeID not in hist_car_NodesPresent[tstep]:
+                continue
+            true_pos_car = ret_nodes[tstep, car_nodeID, :]
+            
+            if not car_nodeID in observations.keys():## By BEN;; NOTE
+                observations[car_nodeID] = [np.zeros((obs_length, 2)), 3]
+            observations[car_nodeID][0][tstep,:] = true_pos_car.cpu().numpy()
+
+    for tstep in range(pred_length):
+        
+        for ped_nodeID in assumed_ped_NodesPresent:
+            if ped_nodeID not in true_ped_NodesPresent[tstep]:
+                continue
+            pred_pos_ped = future_ret_nodes[tstep, ped_nodeID, :]
+            true_pos_ped = future_nodes[tstep, ped_nodeID, :]
+
+            if not ped_nodeID in results.keys():## By BEN;; NOTE
+                results[ped_nodeID] = [np.zeros((pred_length, 2)), np.zeros((pred_length, 2)), 1]
+            results[ped_nodeID][0][tstep,:] = true_pos_ped.cpu().numpy()
+            results[ped_nodeID][1][tstep,:] = pred_pos_ped.cpu().numpy()
+
+        for bic_nodeID in assumed_bic_NodesPresent:
+            if bic_nodeID not in true_bic_NodesPresent[tstep]:
+                continue
+            pred_pos_bic = future_ret_nodes[tstep, bic_nodeID, :]
+            true_pos_bic = future_nodes[tstep, bic_nodeID, :]
+
+            if not bic_nodeID in results.keys():## By BEN;; NOTE
+                results[bic_nodeID] = [np.zeros((pred_length, 2)), np.zeros((pred_length, 2)), 2]
+            results[bic_nodeID][0][tstep,:] = true_pos_bic.cpu().numpy()
+            results[bic_nodeID][1][tstep,:] = pred_pos_bic.cpu().numpy()
+
+        for car_nodeID in assumed_car_NodesPresent:
+            if car_nodeID not in true_car_NodesPresent[tstep]:
+                continue
+            pred_pos_car = future_ret_nodes[tstep, car_nodeID, :]
+            true_pos_car = future_nodes[tstep, car_nodeID, :]
+            
+            if not car_nodeID in results.keys():## By BEN;; NOTE
+                results[car_nodeID] = [np.zeros((pred_length, 2)), np.zeros((pred_length, 2)), 3]
+            results[car_nodeID][0][tstep,:] = true_pos_car.cpu().numpy()
+            results[car_nodeID][1][tstep,:] = pred_pos_car.cpu().numpy()
+    
+    ##VISUALIZATION;; NOTE
+    for ID in results.keys():
+        hist_gt = observations[ID][0]
+        find_00 = hist_gt[:]!=np.array([0.0, 0.0])
+        inds = [ i for i in range(find_00.shape[0]) if (find_00[i] != [False, False])[0] ]
+        hist_gt = hist_gt[inds]
+        
+        
+        test_gt = results[ID][0]
+        find_00 = test_gt[:]!=np.array([0.0, 0.0])
+        inds = [ i for i in range(find_00.shape[0]) if (find_00[i] != [False, False])[0] ]
+        test_gt = test_gt[inds]
+
+        test_ft = results[ID][1]
+        find_00 = test_ft[:]!=np.array([0.0, 0.0])
+        inds = [ i for i in range(find_00.shape[0]) if (find_00[i] != [False, False])[0] ]
+        test_ft = test_ft[inds]
+        
+        
+        if observations[ID][1] == 1:#Peds
+            plt.plot(hist_gt[:,0], hist_gt[:,1], 'o--k')
+            plt.plot(test_gt[:,0], test_gt[:,1], '^-g')
+            plt.plot(test_ft[:,0], test_ft[:,1], '^-r')
+        elif observations[ID][1] == 2:#Bics
+            plt.plot(hist_gt[:,0], hist_gt[:,1], 'o--k')
+            plt.plot(test_gt[:,0], test_gt[:,1], '^-g')
+            plt.plot(test_ft[:,0], test_ft[:,1], '^-r')
+        elif observations[ID][1] == 3:#Bics
+            plt.plot(hist_gt[:,0], hist_gt[:,1], 'o--k')
+            plt.plot(test_gt[:,0], test_gt[:,1], '^-g')
+            plt.plot(test_ft[:,0], test_ft[:,1], '^-r')
+        
+        xmin = min(min(hist_gt[:,0]), min(test_gt[:,0]), min(test_ft[:,0]))
+        xmax = max(max(hist_gt[:,0]), max(test_gt[:,0]), max(test_ft[:,0]))
+        ymin = min(min(hist_gt[:,1]), min(test_gt[:,1]), min(test_ft[:,1]))
+        ymax = max(max(hist_gt[:,1]), max(test_gt[:,1]), max(test_ft[:,1]))
+        STEP = 0.3
+
+        _object = observation_type[observations[ID][1]]
+        plt.title("Object Type: {}".format(_object))
+        plt.xticks(np.arange(xmin-STEP, xmax+STEP, 0.1))
+        plt.yticks(np.arange(ymin-STEP, ymax+STEP, 0.1))
+        
+        # plt.axis('equal')
+        plt.show()
+        
+            
+
+
 
 def get_mean_error_separately(
     ret_nodes, nodes, assumedNodesPresent, trueNodesPresent, use_cuda
 ):
     assumed_ped_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1]) == 1]
     true_ped_NodesPresent = [
-        [m[0] for m in t if int(m[1] == 1)] for t in trueNodesPresent
+        [m[0] for m in t if int(m[1] == 1)] for t in trueNodesPresent#1==pedestrians
     ]
 
     assumed_bic_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1]) == 2]
     true_bic_NodesPresent = [
-        [m[0] for m in t if int(m[1] == 2)] for t in trueNodesPresent
+        [m[0] for m in t if int(m[1] == 2)] for t in trueNodesPresent#2==bicycles
     ]
 
     assumed_car_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1] == 3)]
     true_car_NodesPresent = [
-        [m[0] for m in t if int(m[1] == 3)] for t in trueNodesPresent
+        [m[0] for m in t if int(m[1] == 3)] for t in trueNodesPresent#3==vehicles
     ]
 
     pred_length = ret_nodes.size()[0]
+
     error_ped = torch.zeros(pred_length)
     error_bic = torch.zeros(pred_length)
     error_car = torch.zeros(pred_length)
@@ -243,6 +396,7 @@ def get_mean_error_separately(
         counter_ped = 0
         counter_bic = 0
         counter_car = 0
+    
         for ped_nodeID in assumed_ped_NodesPresent:
             if ped_nodeID not in true_ped_NodesPresent[tstep]:
                 continue
@@ -251,7 +405,8 @@ def get_mean_error_separately(
             error_ped[tstep] += torch.norm(pred_pos_ped - true_pos_ped, p=2)
             counter_ped += 1
         if counter_ped != 0:
-            error_ped[tstep] = error_ped[tstep] / counter_ped
+            error_ped[tstep] = error_ped[tstep] / counter_ped#NOTE: Get Average;
+
 
         for bic_nodeID in assumed_bic_NodesPresent:
             if bic_nodeID not in true_bic_NodesPresent[tstep]:
@@ -262,6 +417,7 @@ def get_mean_error_separately(
             counter_bic += 1
         if counter_bic != 0:
             error_bic[tstep] = error_bic[tstep] / counter_bic
+        
 
         for car_nodeID in assumed_car_NodesPresent:
             if car_nodeID not in true_car_NodesPresent[tstep]:

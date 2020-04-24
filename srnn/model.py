@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -56,8 +57,8 @@ class NodeRNN(nn.Module):
         Forward pass for the model
         params:
         pos : input position  #[5,2]
-        h_temporal : hidden state of the temporal edgeRNN corresponding to this node #  [5,256]
-        h_spatial_other : output of the attention module    # [5, 256]
+        h_temporal : hidden state of the temporal edgeRNN corresponding to this node #  [5,256]     --> h^t_{ii}
+        h_spatial_other : output of the attention module    # [5, 256]                              --> H^t_{i}
         h : hidden state of the current nodeRNN    #[5,128]
         c : cell state of the current nodeRNN #[5,128]
         """
@@ -65,17 +66,17 @@ class NodeRNN(nn.Module):
         new_pos = torch.cat(
             (pos, (torch.ones(pos.shape[0], 1) * node_type).cuda()), dim=1
         )
-        encoded_input = self.encoder_linear(new_pos)
+        encoded_input = self.encoder_linear(new_pos)                                               #--> NOTE: Eq.4
         encoded_input = self.relu(encoded_input)
         # encoded_input = self.dropout(encoded_input)  # [5,128]
 
         # Concat both the embeddings
-        h_edges = torch.cat((h_temporal, h_spatial_other), 1)  # [3, 256]
+        h_edges = torch.cat((h_temporal, h_spatial_other), 1)  # [3, 256]                           --> NOTE: concat in Eq.5
         h_edges = self.edge_attention_embed(h_edges)  # [3,64]
-        h_edges_embedded = self.relu(h_edges)
+        h_edges_embedded = self.relu(h_edges)                                                      #--> NOTE: a^t_i  in Eq.5
         # h_edges_embedded = self.dropout(h_edges_embedded)  # [5,128]
 
-        concat_encoded = torch.cat((encoded_input, h_edges_embedded), 1)  # [3, 128]
+        concat_encoded = torch.cat((encoded_input, h_edges_embedded), 1)  # [3, 128]                --> NOTE: concat in Eq.6
 
         # One-step of LSTM
         h_new, c_new = self.cell(concat_encoded, (h, c))
@@ -228,7 +229,7 @@ class SuperNodeEdgeRNN(nn.Module):
         return h_new, c_new
 
 
-class EdgeAttention(nn.Module):
+class EdgeAttention(nn.Module):# NOTE: Equation (3)
     """
     Class representing the attention module
     """
@@ -320,25 +321,25 @@ class SRNN(nn.Module):
         self.edge_rnn_size = args.edge_rnn_size
         self.output_size = args.node_output_size  # 5
 
-        # Initialize the Node and Edge RNNs
-        self.pedNodeRNN = NodeRNN(args, infer)
-        self.bicNodeRNN = NodeRNN(args, infer)
-        self.carNodeRNN = NodeRNN(args, infer)
-
+        # Initialize the Node and Edge RNNs// Instance LSTM
+        self.pedNodeRNN = NodeRNN(args, infer)#pedestrian
+        self.bicNodeRNN = NodeRNN(args, infer)#bicycle
+        self.carNodeRNN = NodeRNN(args, infer)#vehicle
+        #L_ij --> L_11, L_22, L_33, L_ij(with i!=j, they share weights)
         self.EdgeRNN_spatial = EdgeRNN(args, infer)
         self.pedEdgeRNN_temporal = EdgeRNN(args, infer)
         self.bycEdgeRNN_temporal = EdgeRNN(args, infer)
         self.carEdgeRNN_temporal = EdgeRNN(args, infer)
 
-        self.pedSuperNodeEdgeRNN = SuperNodeEdgeRNN(args)
+        self.pedSuperNodeEdgeRNN = SuperNodeEdgeRNN(args)#SUPER_EDGE_LSTM, NOTE: Eqn.9-10
         self.bycSuperNodeEdgeRNN = SuperNodeEdgeRNN(args)
         self.carSuperNodeEdgeRNN = SuperNodeEdgeRNN(args)
 
-        self.pedSuperNodeRNN = SuperNodeRNN(args)
+        self.pedSuperNodeRNN = SuperNodeRNN(args)#SUPER_NODE_LSTEM, NOTE: Eqn.11-12
         self.bycSuperNodeRNN = SuperNodeRNN(args)
         self.carSuperNodeRNN = SuperNodeRNN(args)
 
-        self.linear_embeding = nn.Linear(128, 64)
+        self.linear_embeding = nn.Linear(128, 64)#e_i(?)
         self.output_layer = nn.Linear(64, 5)
         self.relu = nn.ReLU()
 
@@ -346,7 +347,7 @@ class SRNN(nn.Module):
         self.attn = EdgeAttention(args, infer)  # Instance Layer
         # self.node_attn = NodeAttention(args)   # Category Layer
 
-    def final_instance_node_output(self, ped_h_nodes, h_u):
+    def final_instance_node_output(self, ped_h_nodes, h_u):####### NOTE: Eqn.13
         h_u = h_u.repeat((ped_h_nodes.shape[0], 1))
         h_concate = torch.cat((ped_h_nodes, h_u), dim=1)
         output = self.linear_embeding(h_concate)
@@ -376,13 +377,13 @@ class SRNN(nn.Module):
         nodes : input node features
         edges : input edge features
         nodesPresent : A list of lists, of size seq_length
-        Each list contains the nodeIDs that are present in the frame
+                       Each list contains the nodeIDs that are present in the frame
         edgesPresent : A list of lists, of size seq_length
-        Each list contains tuples of nodeIDs that have edges in the frame
-        hidden_states_node_RNNs : A tensor of size          numNodes x node_rnn_size
-        Contains hidden states of the node RNNs
-        hidden_states_edge_RNNs : A tensor of size          numNodes x numNodes x edge_rnn_size
-        Contains hidden states of the edge RNNs
+                       Each list contains tuples of nodeIDs that have edges in the frame
+        hidden_states_node_RNNs : A tensor of size:     numNodes x node_rnn_size
+                                  Contains hidden states of the node RNNs
+        hidden_states_edge_RNNs : A tensor of size:     numNodes x numNodes x edge_rnn_size
+                                  Contains hidden states of the edge RNNs
 
         returns:
         outputs : A tensor of shape seq_length x numNodes x 5
@@ -406,9 +407,9 @@ class SRNN(nn.Module):
 
         # For each frame   #  self.seq_length = 10
         for framenum in range(self.seq_length):
-            edgeIDs = edgesPresent[framenum]
+            edgeIDs = edgesPresent[framenum]#==[(i, j, edge.getType()), (i, j, edge.getType()), (i, j, edge.getType()), ... ] in the current frame
             c_ij_ori_spatial = (
-                torch.tensor([[t[0], t[1]] for t in edgeIDs if t[0] != t[1]])
+                torch.tensor([[t[0], t[1]] for t in edgeIDs if t[0] != t[1]])#t[*] means NODE
                 .float()
                 .cuda()
             )
@@ -463,7 +464,7 @@ class SRNN(nn.Module):
                     list_of_temporal_edges_ped = Variable(
                         torch.LongTensor(
                             [
-                                x[0] * numNodes + x[0]
+                                x[0] * numNodes + x[0]#TODO....NOTE
                                 for x in temporal_edges_id_and_type
                                 if x[2] == "pedestrian/T"
                             ]
@@ -529,7 +530,7 @@ class SRNN(nn.Module):
                     # Do forward pass through temporaledgeRNN
 
                     if ped_edges_temporal_start_end.shape[0] > 0:
-                        ped_h_temporal, ped_c_temporal = self.pedEdgeRNN_temporal(
+                        ped_h_temporal, ped_c_temporal = self.pedEdgeRNN_temporal(#L_{11}
                             ped_edges_temporal_start_end,
                             c_ij_ori_temporal_ped,
                             ped_hidden_temporal_start_end,
@@ -546,7 +547,7 @@ class SRNN(nn.Module):
                         ] = ped_h_temporal
 
                     if byc_edges_temporal_start_end.shape[0] > 0:
-                        byc_h_temporal, byc_c_temporal = self.bycEdgeRNN_temporal(
+                        byc_h_temporal, byc_c_temporal = self.bycEdgeRNN_temporal(#L_{22}
                             byc_edges_temporal_start_end,
                             c_ij_ori_temporal_byc,
                             byc_hidden_temporal_start_end,
@@ -563,7 +564,7 @@ class SRNN(nn.Module):
                         ] = byc_h_temporal
 
                     if car_edges_temporal_start_end.shape[0] > 0:
-                        car_h_temporal, car_c_temporal = self.carEdgeRNN_temporal(
+                        car_h_temporal, car_c_temporal = self.carEdgeRNN_temporal(#L_{33}
                             car_edges_temporal_start_end,
                             c_ij_ori_temporal_car,
                             car_hidden_temporal_start_end,
@@ -608,7 +609,7 @@ class SRNN(nn.Module):
                     )  # [20, 256]
 
                     # Do forward pass through spatialedgeRNN
-                    h_spatial, c_spatial = self.EdgeRNN_spatial(
+                    h_spatial, c_spatial = self.EdgeRNN_spatial(#L_{ij}; i != j
                         edges_spatial_start_end,
                         c_ij_ori_spatial,
                         hidden_spatial_start_end,
@@ -619,7 +620,7 @@ class SRNN(nn.Module):
                     hidden_states_edge_RNNs[list_of_spatial_edges] = h_spatial
                     cell_states_edge_RNNs[list_of_spatial_edges] = c_spatial
 
-                    # pass it to attention module
+                    # pass it to attention module#NOTE: equation (3)
                     # For each node
                     for node in range(numNodes):
                         # Get the indices of spatial edges associated with this node
@@ -674,7 +675,7 @@ class SRNN(nn.Module):
                 ).cuda()
 
                 # Get their node features
-                # nodes_current_selected = torch.index_select(nodes_current, 0, list_of_nodes)  #[5,2]
+                # nodes_current_selected = torch.index_select(nodes_current, 0, list_of_nodes)  #[5,2];;NOTE: Eqn.4?
                 ped_nodes_current_selected = torch.index_select(
                     nodes_current, 0, list_of_nodes_ped
                 )
@@ -724,7 +725,9 @@ class SRNN(nn.Module):
                 car_h_spatial_other = hidden_states_nodes_from_edges_spatial[
                     list_of_nodes_car
                 ]
-
+                ############################### NOTE: Instance LSTM step// Eqn.6
+                ###############################       h_nodes = h1              in Figure 3
+                ###############################       c_nodes = c
                 if ped_nodes_current_selected.shape[0] > 0:
                     ped_h_nodes, ped_c_nodes = self.pedNodeRNN(
                         ped_nodes_current_selected,
@@ -754,9 +757,9 @@ class SRNN(nn.Module):
                         / instance_cnt_ped
                     )
 
-                    delta_weighted_supernode_f_u_ped = (
-                        weighted_supernode_f_u_ped_next_time
-                        - weighted_supernode_f_u_ped
+                    delta_weighted_supernode_f_u_ped = (######        F_uu        #####
+                        weighted_supernode_f_u_ped_next_time##        F^{t+1}_u
+                        - weighted_supernode_f_u_ped        ##        F^{t}_u
                     )
 
                     ped_hidden_states_super_node_Edge_RNNs = torch.index_select(
@@ -766,11 +769,12 @@ class SRNN(nn.Module):
                         cell_states_super_node_Edge_RNNs, 0, torch.tensor(0).cuda()
                     )
 
-                    h_uu_ped, c_uu_ped = self.pedSuperNodeEdgeRNN(
+                    h_uu_ped, c_uu_ped = self.pedSuperNodeEdgeRNN(#NOTE: Eqn.10
                         delta_weighted_supernode_f_u_ped,
                         ped_hidden_states_super_node_Edge_RNNs,
                         ped_cell_states_super_node_Edge_RNNs,
                     )
+
 
                     hidden_states_super_node_Edge_RNNs[0] = h_uu_ped
                     cell_states_super_node_Edge_RNNs[0] = c_uu_ped
@@ -783,8 +787,8 @@ class SRNN(nn.Module):
                     ped_cell_states_super_node_RNNs = torch.index_select(
                         cell_states_super_node_RNNs, 0, torch.tensor(0).cuda()
                     )
-                    h_u_ped, c_u_ped = self.pedSuperNodeRNN(
-                        weighted_supernode_f_u_ped,
+                    h_u_ped, c_u_ped = self.pedSuperNodeRNN(#NOTE: Eqn.12
+                        weighted_supernode_f_u_ped,         #NOTE: F_u
                         h_uu_ped,
                         ped_hidden_states_super_node_RNNs,
                         ped_cell_states_super_node_RNNs,
