@@ -41,6 +41,8 @@ class DataLoader:
     ):
         """
         It uses APOL dataset!NOTE
+        Dataset means one single logging .txt or .csv file.
+
         Initialiser function for the DataLoader class
         params:
         batch_size : Size of the mini-batch
@@ -55,7 +57,7 @@ class DataLoader:
         self.dataset_cnt = len(os.listdir(self.data_dirs))# Ben: Get the number of all data in 'data_dirs'
         self.dataset_idx = sorted(os.listdir(self.data_dirs))# Ben: Sort the data name by alphabet order
         np.random.shuffle(self.dataset_idx)# Shuffle the training data
-        self.train_data_dirs = self.dataset_idx[: int(self.dataset_cnt * 0.9)]# Ben: 90% is used in TRAINING
+        self.train_data_dirs = self.dataset_idx[: int(self.dataset_cnt * 0.9)]# Ben: 90% is used in TRAINING; only has IDX
         if infer == True:# Only in test 
             self.train_data_dirs = self.dataset_idx[int(self.dataset_cnt * 0.9) :]# Ben: 10% is used for INFER
         self.infer = infer
@@ -63,10 +65,10 @@ class DataLoader:
         # Store the arguments
         self.batch_size = batch_size
         self.seq_length = seq_length
-
-        data_file = os.path.join("../data/", "trajectories.cpkl")
+        # (training, validation, test) = (0.7, 0.2, 0.1)
+        data_file = os.path.join("../data/", "trajectories.cpkl")# only has 90% of training .txt
         if infer == True:
-            data_file = os.path.join("../data/", "test_trajectories.cpkl")
+            data_file = os.path.join("../data/", "test_trajectories.cpkl")# only has 10% of training.txt
 
         self.val_fraction = 0.2
 
@@ -104,36 +106,38 @@ class DataLoader:
         # all_frame_data would be a list of list of numpy arrays corresponding to each dataset
         # Each numpy array will correspond to a frame and would be of size (numPeds, 3) each row
         # containing pedID, x, y
-        all_frame_data = []
+        all_frame_data = []# [ #dataset x #frame x (#numPeds x 3) ]
         # Validation frame data
         valid_frame_data = []
         # frameList_data would be a list of lists corresponding to each dataset
         # Each list would contain the frameIds of all the frames in the dataset
-        frameList_data = []
+        frameList_data = []# [ #dataset x #frame ]
         # numPeds_data would be a list of lists corresponding to each dataset
-        # Ech list would contain the number of pedestrians in each frame in the dataset
-        numPeds_data = []
+        # Each list would contain the number of pedestrians in each frame in the dataset
+        numPeds_data = []# [ #dataset x #frame ]
         # Index of the current dataset
         dataset_index = 0
 
+        # Initialization
         min_position_x = 1000
         max_position_x = -1000
         min_position_y = 1000
         max_position_y = -1000
 
-        for ind_directory, directory in enumerate(data_dirs):
+        for ind_directory, directory in enumerate(data_dirs):# Get min/max position along all datasets
             file_path = os.path.join("../data/prediction_train/", directory)
             data = np.genfromtxt(file_path, delimiter=" ")
             min_position_x = min(min_position_x, min(data[:, 3]))
             max_position_x = max(max_position_x, max(data[:, 3]))
             min_position_y = min(min_position_y, min(data[:, 4]))
             max_position_y = max(max_position_y, max(data[:, 4]))
+        scale_list = [min_position_x, min_position_y, max_position_x, max_position_y]
         # For each dataset
         for ind_directory, directory in enumerate(data_dirs):
             # define path of the csv file of the current dataset
             # file_path = os.path.join(directory, 'pixel_pos.csv')
 
-            file_path = os.path.join("../data/prediction_train/", directory)
+            file_path = os.path.join("../data/prediction_train/", directory)# Each .txt or .csv file
 
             # Load the data from the csv file
             data = np.genfromtxt(file_path, delimiter=" ")
@@ -144,16 +148,19 @@ class DataLoader:
             data[:, 4] = (
                 (data[:, 4] - min(data[:, 4])) / (max(data[:, 4]) - min(data[:, 4]))
             ) * 2 - 1
-            --> Ben: scaling each position
+            --> Ben: scaling each position;
+            -->      If you want to get real difference; you should scale up all data set again
+            -->      or save each scale rate for each dataset and multiply them, later,
+            -->      Scale range: [-1.0, +1.0]
             """
             data[:, 3] = (
                 (data[:, 3] - min_position_x) / (max_position_x - min_position_x)
-            ) * 2 - 1
+            ) * 2 - 1 # Scale range [-1, 1]
             data[:, 4] = (
                 (data[:, 4] - min_position_y) / (max_position_y - min_position_y)
             ) * 2 - 1
 
-            data = data[~(data[:, 2] == 5)]#Ben: DO NOT CONSIDER 'others' OBJECT.
+            data = data[~(data[:, 2] == 5)]#Ben: DO NOT CONSIDER 'others' OBJECT. [REMOVE]
 
             # Frame IDs of the frames in the current dataset
             frameList = np.unique(data[:, 0]).tolist()
@@ -172,7 +179,7 @@ class DataLoader:
 
             for ind, frame in enumerate(frameList):
 
-                ## NOTE CHANGE
+                ## NOTE
                 if ind % skip != 0:
                     # Skip every n frames
                     continue
@@ -195,7 +202,7 @@ class DataLoader:
                     current_y = pedsInFrame[pedsInFrame[:, 1] == ped, 4][0]
                     current_type = self.class_objtype(
                         int(pedsInFrame[pedsInFrame[:, 1] == ped, 2][0])
-                    )# object type
+                    )# Object type
                     # print('current_type    {}'.format(current_type))
                     # Add their pedID, x, y to the row of the numpy array
                     pedsWithPos.append([ped, current_x, current_y, current_type])
@@ -213,7 +220,7 @@ class DataLoader:
         # Save the tuple (all_frame_data, frameList_data, numPeds_data) in the pickle file
         f = open(data_file, "wb")
         pickle.dump(
-            (all_frame_data, frameList_data, numPeds_data, valid_frame_data),
+            (all_frame_data, frameList_data, numPeds_data, valid_frame_data, scale_list),
             f,
             protocol=2,
         )
@@ -234,6 +241,21 @@ class DataLoader:
         params:
         data_file : the path to the pickled data file
         data정리 및 training, val batchs 설정.
+        data = [[[frame1 data],     #first dataset// only for training; valid_data has same form.
+                 [frame2 data],
+                      ....   ]],
+                [[frame1 data],     #second dataset
+                 [frame2 data],
+                      ....   ]]]
+        frameList = [[1st f, 2nd f, 3rd f, ...],     #first dataset
+                     [1st f, 2nd f, 3rd f, ...],     #second dataset
+                            ....,
+                     [1st f, 2nd f, 3rd f, ...]]     #last dataset
+        
+        numPedsList = [[# of agents in 1st f, # of agents in 2nd f, # of agents in 3rd f, ...],     #first dataset
+                       [# of agents in 1st f, # of agents in 2nd f, # of agents in 3rd f, ...],     #second dataset
+                            ....,
+                       [# of agents in 1st f, # of agents in 2nd f, # of agents in 3rd f, ...]]     #last dataset
         """
         # Load data from the pickled file
         f = open(data_file, "rb")
@@ -244,10 +266,11 @@ class DataLoader:
         self.frameList = self.raw_data[1]
         self.numPedsList = self.raw_data[2]
         self.valid_data = self.raw_data[3]
+        self.scale_param = self.raw_data[4]#NOTE: Ben
         counter = 0
         valid_counter = 0
 
-        # For each dataset
+        # For each dataset(.txt or .csv)
         for dataset in range(len(self.data)):
             # get the frame data for the current dataset(#.txt)
             all_frame_data = self.data[dataset]
@@ -263,6 +286,7 @@ class DataLoader:
                 )
             )
             # Increment the counter with the number of sequences in the current dataset
+            # I.E. count the number of sequences for training
             counter += int(len(all_frame_data) / (self.seq_length))
             valid_counter += int(len(valid_frame_data) / (self.seq_length))
 
@@ -304,8 +328,8 @@ class DataLoader:
             if idx + self.seq_length < len(frame_data):
                 # All the data in this sequence
                 # seq_frame_data = frame_data[idx:idx+self.seq_length+1]
-                seq_source_frame_data = frame_data[idx : idx + self.seq_length]# index부터 history 길이만큼의 frame data를 모두 가져온다.
-                seq_target_frame_data = frame_data[idx + 1 : idx + self.seq_length + 1]
+                seq_source_frame_data = frame_data[idx : idx + self.seq_length]# index부터 history 길이만큼의 frame data를 모두 가져온다.   ex) [0, 1, 2, 3, ...]
+                seq_target_frame_data = frame_data[idx + 1 : idx + self.seq_length + 1]#                                             ex) [1, 2, 3, 4, ...]
                 seq_frame_ids = frame_ids[idx : idx + self.seq_length]
 
                 # Number of unique peds in this sequence of frames

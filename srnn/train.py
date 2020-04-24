@@ -68,13 +68,13 @@ def main():
     parser.add_argument("--attention_size", type=int, default=64, help="Attention size")
 
     # Sequence length
-    parser.add_argument("--seq_length", type=int, default=6, help="Sequence length")#history trajectory 
+    parser.add_argument("--seq_length", type=int, default=16, help="Sequence length")#history trajectory 
     parser.add_argument(
         "--pred_length", type=int, default=10, help="Predicted sequence length"#future trajectory
     )
 
     # Batch size
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
 
     # Number of epochs
     parser.add_argument("--num_epochs", type=int, default=100, help="number of epochs")#default: 300
@@ -137,7 +137,7 @@ def train(args):
 
     # Path to store the checkpoint file
     def checkpoint_path(x):
-        return os.path.join(save_directory, "4Dgraph-{}-{}-srnn_model_"\
+        return os.path.join(save_directory, "4Dgraph.S-{}.P-{}.srnn_model_"\
                             .format(args.seq_length, args.pred_length)\
                             + str(x) + ".tar")
 
@@ -169,10 +169,11 @@ def train(args):
 
             # For each sequence in the batch
             for sequence in range(dataloader.batch_size):#미니 배치에 있는 각 sequence 데이터에 대한 처리.
-                # Construct the graph for the current sequence
+                # Construct the graph for the current sequence in {nodes, edges}
                 stgraph.readGraph([x[sequence]])
                 nodes, edges, nodesPresent, edgesPresent = stgraph.getSequence()#미니 배치에 있는 각 sequence의 graph 정보.
-                # Convert to cuda variables
+            
+                ##### Convert to cuda variables #####
                 nodes = Variable(torch.from_numpy(nodes).float())
                 # nodes[0] represent all the person(object)'s corrdinate show up in frame 0.
                 if args.use_cuda:
@@ -182,7 +183,7 @@ def train(args):
                     edges = edges.cuda()
 
                 # Define hidden states
-                numNodes = nodes.size()[1]
+                numNodes = nodes.size()[1]#numNodes
 
                 hidden_states_node_RNNs = Variable(
                     torch.zeros(numNodes, args.node_rnn_size)

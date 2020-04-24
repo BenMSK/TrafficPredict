@@ -638,14 +638,14 @@ def sample_gaussian_2d_train(mux, muy, sx, sy, corr, nodesPresent):
     for node in range(numNodes):
         if node not in nodesPresent:
             continue
+        
         mean = [o_mux[node], o_muy[node]]
-
         cov = [
             [o_sx[node] * o_sx[node], o_corr[node] * o_sx[node] * o_sy[node]],
             [o_corr[node] * o_sx[node] * o_sy[node], o_sy[node] * o_sy[node]],
         ]
 
-        next_values = np.random.multivariate_normal(mean, cov, 1)
+        next_values = np.random.multivariate_normal(mean, cov, 1)# sampling!
         next_x[node] = next_values[0][0]
         next_y[node] = next_values[0][1]
 

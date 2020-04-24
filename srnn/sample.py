@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import argparse
 import os
 import pickle
@@ -122,7 +123,7 @@ def main():
             nodesPresent[: sample_args.obs_length],
             edgesPresent[: sample_args.obs_length],
         )
-        # Sample function
+        # Sample function;; get only observation sequence
         ret_nodes, ret_attn = sample(
             obs_nodes,
             obs_edges,
@@ -135,7 +136,7 @@ def main():
             nodesPresent,
         )
 
-        ###### NOTE: VISUALIZATION;;Ben
+        ###### NOTE: VISUALIZATION;;Ben;; You should scale up all the dataset as same as the raw dataset
         visualization(
             ret_nodes.data,
             nodes.data,
@@ -321,8 +322,8 @@ def sample(
         h_super_edges = h_super_edges.cuda()
         c_super_edges = c_super_edges.cuda()
 
-    # Propagate the observed length of the trajectory
-    for tstep in range(args.obs_length - 1):
+    # NOTE: Propagate the observed length of the trajectory// I think this step is for obtaining '''{hidden, cell}''' states
+    for tstep in range(args.obs_length - 1):#till observed length
         # Forward prop
         out_obs, h_nodes, h_edges, c_nodes, c_edges, h_super_node, h_super_edges, c_super_node, c_super_edges, _ = net(
             nodes[tstep].view(1, numNodes, 2),
@@ -346,7 +347,7 @@ def sample(
     )
     if args.use_cuda:
         ret_nodes = ret_nodes.cuda()
-    ret_nodes[: args.obs_length, :, :] = nodes.clone()
+    ret_nodes[: args.obs_length, :, :] = nodes.clone()#### Ground Truth
 
     ret_edges = Variable(
         torch.zeros((args.obs_length + args.pred_length), numNodes * numNodes, 2),
@@ -354,14 +355,17 @@ def sample(
     )
     if args.use_cuda:
         ret_edges = ret_edges.cuda()
-    ret_edges[: args.obs_length, :, :] = edges.clone()
+    ret_edges[: args.obs_length, :, :] = edges.clone()#### Ground Truth
 
     ret_attn = []
 
     # Propagate the predicted length of trajectory (sampling from previous prediction)
+    # WHICH IS PREDICTION STEP!
     for tstep in range(args.obs_length - 1, args.pred_length + args.obs_length - 1):
         # TODO Not keeping track of nodes leaving the frame (or new nodes entering the frame, which I don't think we can do anyway)
-        # Forward prop
+        # Forward prop// Recursive//
+        # 이 알고리즘은 recursive하게 현 state{t}에서 다음 state를 단순히 잇는 LSTM cell을 학습시키는 것 이기에 sequence 데이터가 들어오게 되면
+        # cell을 이용하여 다음 output_{t+1}을 예측하고, 이 output_{t+1}이 다시 cell로 들어가서 output_{t+2}를 내뱉는 구조.                         
         outputs, h_nodes, h_edges, c_nodes, c_edges, h_super_node, h_super_edges, c_super_node, c_super_edges, attn_w = net(
             ret_nodes[tstep].view(1, numNodes, 2),
             ret_edges[tstep].view(1, numNodes * numNodes, 2),
@@ -375,15 +379,17 @@ def sample(
             h_super_edges,
             c_super_node,
             c_super_edges,
-        )
+        )####이때 output은 현재 frame에 존재하는 모든 node들의 (mux,muy,std,corr)
+
         mux, muy, sx, sy, corr = getCoef(outputs)
-        next_x, next_y = sample_gaussian_2d(
+        #TODO
+        next_x, next_y = sample_gaussian_2d(#gaussian 2d를 구축한 후, 여기서 sampling된 한 점을 x,y로 하는데 이게 맞나...?
             mux.data,
             muy.data,
             sx.data,
             sy.data,
             corr.data,
-            nodesPresent[args.obs_length - 1],
+            nodesPresent[args.obs_length - 1],#오직 현scene에 존재하는 object들의 trajectory를 예측하는 것.
         )
 
         ret_nodes[tstep + 1, :, 0] = next_x

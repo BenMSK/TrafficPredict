@@ -317,19 +317,19 @@ class SRNN(nn.Module):
             self.obs_length = args.seq_length - args.pred_length
 
         # Store required sizes
-        self.node_rnn_size = args.node_rnn_size
-        self.edge_rnn_size = args.edge_rnn_size
-        self.output_size = args.node_output_size  # 5
+        self.node_rnn_size = args.node_rnn_size     # 64
+        self.edge_rnn_size = args.edge_rnn_size     # 128
+        self.output_size = args.node_output_size    # 5
 
         # Initialize the Node and Edge RNNs// Instance LSTM
         self.pedNodeRNN = NodeRNN(args, infer)#pedestrian
         self.bicNodeRNN = NodeRNN(args, infer)#bicycle
         self.carNodeRNN = NodeRNN(args, infer)#vehicle
-        #L_ij --> L_11, L_22, L_33, L_ij(with i!=j, they share weights)
-        self.EdgeRNN_spatial = EdgeRNN(args, infer)
-        self.pedEdgeRNN_temporal = EdgeRNN(args, infer)
-        self.bycEdgeRNN_temporal = EdgeRNN(args, infer)
-        self.carEdgeRNN_temporal = EdgeRNN(args, infer)
+        #L_ij --> L_11, L_22, L_33
+        self.EdgeRNN_spatial = EdgeRNN(args, infer)#L_ij(with i!=j, they share weights)
+        self.pedEdgeRNN_temporal = EdgeRNN(args, infer)#L_11
+        self.bycEdgeRNN_temporal = EdgeRNN(args, infer)#L_22
+        self.carEdgeRNN_temporal = EdgeRNN(args, infer)#L_33
 
         self.pedSuperNodeEdgeRNN = SuperNodeEdgeRNN(args)#SUPER_EDGE_LSTM, NOTE: Eqn.9-10
         self.bycSuperNodeEdgeRNN = SuperNodeEdgeRNN(args)
@@ -339,7 +339,7 @@ class SRNN(nn.Module):
         self.bycSuperNodeRNN = SuperNodeRNN(args)
         self.carSuperNodeRNN = SuperNodeRNN(args)
 
-        self.linear_embeding = nn.Linear(128, 64)#e_i(?)
+        self.linear_embeding = nn.Linear(128, 64)#e_i
         self.output_layer = nn.Linear(64, 5)
         self.relu = nn.ReLU()
 
@@ -374,8 +374,8 @@ class SRNN(nn.Module):
         """
         Forward pass for the model
         params:
-        nodes : input node features
-        edges : input edge features
+        nodes : input node features (x,y)
+        edges : input edge features (vector)
         nodesPresent : A list of lists, of size seq_length
                        Each list contains the nodeIDs that are present in the frame
         edgesPresent : A list of lists, of size seq_length
@@ -390,6 +390,7 @@ class SRNN(nn.Module):
         Contains the predictions for next time-step
         hidden_states_node_RNNs
         hidden_states_edge_RNNs
+        ************************************* seq_length의 경우, sample.py가 동작할 때는 1로 설정되어 ''하나의 state -> Network --> 다음 state''의 구조.
         """
         # Get number of nodes
         numNodes = nodes.size()[1]
@@ -408,6 +409,7 @@ class SRNN(nn.Module):
         # For each frame   #  self.seq_length = 10
         for framenum in range(self.seq_length):
             edgeIDs = edgesPresent[framenum]#==[(i, j, edge.getType()), (i, j, edge.getType()), (i, j, edge.getType()), ... ] in the current frame
+            # get existing edge in a current frame
             c_ij_ori_spatial = (
                 torch.tensor([[t[0], t[1]] for t in edgeIDs if t[0] != t[1]])#t[*] means NODE
                 .float()
@@ -435,6 +437,7 @@ class SRNN(nn.Module):
             # Find the nodes present in the current frame
             nodeIDs = nodesPresent[framenum]
 
+            # Find the nodes & edges' feature in the current frame
             nodes_current = nodes[framenum]  # [10,26,2]
             edges_current = edges[framenum]  # [676,2]
 
@@ -456,7 +459,7 @@ class SRNN(nn.Module):
             # If there are any edges
             if len(edgeIDs) != 0:
                 # Temporal Edges
-                if len(temporal_edges) != 0:
+                if len(temporal_edges) != 0:#First;;
                     temporal_edges_id_and_type = [
                         item for item in edgeIDs if item[0] == item[1]
                     ]
@@ -658,7 +661,7 @@ class SRNN(nn.Module):
             if len(nodeIDs) != 0:
                 """
                 # Get list of nodes
-                list_of_nodes = Variable(torch.LongTensor(nodeIDs))
+                list_of_nodes = Variable(torch.LongTensor(nodeIDs))// Node IDs
                 if self.use_cuda:
                     list_of_nodes = list_of_nodes.cuda()
                 list_of_nodes = list_of_nodes[:,0]
@@ -725,9 +728,10 @@ class SRNN(nn.Module):
                 car_h_spatial_other = hidden_states_nodes_from_edges_spatial[
                     list_of_nodes_car
                 ]
-                ############################### NOTE: Instance LSTM step// Eqn.6
-                ###############################       h_nodes = h1              in Figure 3
-                ###############################       c_nodes = c
+
+                ######### NOTE: Instance LSTM step// Eqn.6
+                #########       h_nodes = h1              in Figure 3
+                #########       c_nodes = c
                 if ped_nodes_current_selected.shape[0] > 0:
                     ped_h_nodes, ped_c_nodes = self.pedNodeRNN(
                         ped_nodes_current_selected,
@@ -931,7 +935,7 @@ class SRNN(nn.Module):
         if self.use_cuda:
             outputs_return = outputs_return.cuda()
 
-        for framenum in range(self.seq_length):
+        for framenum in range(self.seq_length):######
             for node in range(numNodes):
                 outputs_return[framenum, node, :] = outputs[
                     framenum * numNodes + node, :

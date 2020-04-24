@@ -11,6 +11,7 @@ class ST_GRAPH:
         params:
         batch_size : Size of the mini-batch
         seq_length : Sequence length to be considered
+        nodes      : Contains node_info for each sequence (of the batch)
         """
         self.batch_size = batch_size
         self.seq_length = seq_length
@@ -24,31 +25,31 @@ class ST_GRAPH:
 
     def readGraph(self, source_batch):#mini-batch의 sample sequence에서 graph를 구성하는 과정!
         """
+        source_batch는 우리가 고려하는 sequence input. [[[frame1 data], [frame2 data], ... ,[frame_seq_length data]]]
         Main function that constructs the ST graph from the batch data
         params:
         source_batch : List of lists of numpy arrays. Each numpy array corresponds to a frame in the sequence.
         categories:  car --> 3,   2 --> bicycle ,  1 ---> pedestrian
         """
         for sequence in range(self.batch_size):#self.batch_size == 1
+            # sequence == batch index
             # source_seq is a list of numpy arrays
             # where each numpy array corresponds to a single frame//NOTE
-            source_seq = source_batch[sequence]
+            source_seq = source_batch[sequence]#==x[sequence]
             #  list of frames, every frames may have different number person
             for framenum in range(self.seq_length):
                 # Each frame is a numpy array
                 # each row in the array is of the form
                 # pedID, x, y, type
-                frame = source_seq[
-                    framenum
-                ]
+                frame_data = source_seq[framenum]#It contains current frame data
 
-                # Add nodes
-                for ped in range(frame.shape[0]):
-                    pedID = frame[ped, 0]
-                    x = frame[ped, 1]
-                    y = frame[ped, 2]
+                # Add nodes for all ped in the current frame
+                for ped in range(frame_data.shape[0]):
+                    pedID = frame_data[ped, 0]
+                    x = frame_data[ped, 1]
+                    y = frame_data[ped, 2]
                     pos = (x, y)
-                    node_type = frame[ped, 3]
+                    node_type = frame_data[ped, 3]
 
                     if pedID not in self.nodes[sequence]:
                         node_id = pedID
@@ -80,7 +81,7 @@ class ST_GRAPH:
                             edge_pos_list[framenum] = pos_edge
                             self.edges[sequence][edge_id] = ST_EDGE(
                                 edge_type, edge_id, edge_pos_list
-                            )
+                            )#sequential data of edge; edge feature will be ( node_xy_at{t}, node_xy_at{t+1} )
                         else:
                             self.edges[sequence][edge_id].addPosition(
                                 pos_edge, framenum
@@ -90,14 +91,14 @@ class ST_GRAPH:
                 # Adding spatial edges between all pairs of pedestrians.
                 # TODO:
                 # Can be pruned by considering pedestrians who are close to each other
-                # Add spatial edges
+                # Add spatial edges;; spatial edges are generated as complete graph, at current frame 
                 # all the spatial edges share same weights
-                for ped_in in range(frame.shape[0]):
-                    for ped_out in range(ped_in + 1, frame.shape[0]):
-                        pedID_in = frame[ped_in, 0]
-                        pedID_out = frame[ped_out, 0]
-                        pos_in = (frame[ped_in, 1], frame[ped_in, 2])
-                        pos_out = (frame[ped_out, 1], frame[ped_out, 2])
+                for ped_in in range(frame_data.shape[0]):
+                    for ped_out in range(ped_in + 1, frame_data.shape[0]):
+                        pedID_in = frame_data[ped_in, 0]
+                        pedID_out = frame_data[ped_out, 0]
+                        pos_in = (frame_data[ped_in, 1], frame_data[ped_in, 2])
+                        pos_out = (frame_data[ped_out, 1], frame_data[ped_out, 2])
                         pos = (pos_in, pos_out)
                         edge_id = (pedID_in, pedID_out)
                         # ASSUMPTION:
@@ -141,14 +142,12 @@ class ST_GRAPH:
         nodes = self.nodes[0]
         edges = self.edges[0]
 
-        numNodes = len(nodes.keys())
+        numNodes = len(nodes.keys())#해당 sequence에 나타나는 총 노드의 개수
         # print("********************* numNodes {}***********".format(numNodes))
         list_of_nodes = {}
         # print("seq: ", self.seq_length)#### seq_length = obs_length + pred_length
         retNodes = np.zeros((self.seq_length, numNodes, 2))
-        retEdges = np.zeros(
-            (self.seq_length, numNodes * numNodes, 2)
-        )  # Diagonal contains temporal edges
+        retEdges = np.zeros((self.seq_length, numNodes * numNodes, 2))  # Diagonal contains temporal edges
         retNodePresent = [[] for _ in range(self.seq_length)]#c// Only, save the node ID and type
         retEdgePresent = [[] for _ in range(self.seq_length)]#c
 
@@ -188,9 +187,11 @@ class ST_GRAPH:
                         )
                         retEdges[framenum, j * numNodes + i, :] = -np.copy(
                             retEdges[framenum, i * (numNodes) + j, :]
-                        )
+                        )# 어차피 마이너스 vector가 되므로.
 
         return retNodes, retEdges, retNodePresent, retEdgePresent
+        #retNodes: 현재 들어온 sequence data에 존재하는 모든 node들의 정보를 담고 있는 변수
+        #retEdges: #edge --> adjacency matrix형태로 이
 
 
 class ST_NODE:
