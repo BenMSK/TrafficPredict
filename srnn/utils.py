@@ -267,6 +267,7 @@ class DataLoader:
         self.numPedsList = self.raw_data[2]
         self.valid_data = self.raw_data[3]
         self.scale_param = self.raw_data[4]#NOTE: Ben
+        print("Scale parameter: ", self.scale_param)
         counter = 0
         valid_counter = 0
 

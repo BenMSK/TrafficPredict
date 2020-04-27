@@ -116,9 +116,11 @@ def sample_gaussian_2d(mux, muy, sx, sy, corr, nodesPresent):
         cov[0][1] = cov[0][1].item()
         cov[1][0] = cov[1][0].item()
         cov[1][1] = cov[1][1].item()
+        # why sampling...?
         next_values = np.random.multivariate_normal(mean, cov, 1)
-        next_x[node] = next_values[0][0]
-        next_y[node] = next_values[0][1]
+    
+        next_x[node] = mean[0]#next_values[0][0]
+        next_y[node] = mean[1]#next_values[0][1]
 
     return next_x, next_y
 
@@ -211,7 +213,12 @@ def get_mean_error(ret_nodes, nodes, assumedNodesPresent, trueNodesPresent, use_
 
     return torch.mean(error)
 
-def visualization(ret_nodes, nodes, historyNodesPresent, assumedNodesPresent, trueNodesPresent, obs_length):#NOTE;; Ben
+def visualization(ret_nodes, nodes, historyNodesPresent, assumedNodesPresent,\
+     trueNodesPresent, obs_length, scale_param):#NOTE;; Ben
+
+    min_position_x, min_position_y, max_position_x, max_position_y = scale_param
+
+
     observation_type = ['NONE', 'Pedestrian', 'Bicycle', 'Vehicle']
 
     assumed_ped_NodesPresent = [t[0] for t in assumedNodesPresent if int(t[1]) == 1]
@@ -319,17 +326,29 @@ def visualization(ret_nodes, nodes, historyNodesPresent, assumedNodesPresent, tr
         find_00 = hist_gt[:]!=np.array([0.0, 0.0])
         inds = [ i for i in range(find_00.shape[0]) if (find_00[i] != [False, False])[0] ]
         hist_gt = hist_gt[inds]
+        # Scale up
+        hist_gt[:,0] = (hist_gt[:,0]+1)*(max_position_x - min_position_x)/2 + min_position_x
+        hist_gt[:,1] = (hist_gt[:,1]+1)*(max_position_y - min_position_y)/2 + min_position_y
         
         
         test_gt = results[ID][0]
         find_00 = test_gt[:]!=np.array([0.0, 0.0])
         inds = [ i for i in range(find_00.shape[0]) if (find_00[i] != [False, False])[0] ]
         test_gt = test_gt[inds]
+        # Scale up
+        test_gt[:,0] = (test_gt[:,0]+1)*(max_position_x - min_position_x)/2 + min_position_x
+        test_gt[:,1] = (test_gt[:,1]+1)*(max_position_y - min_position_y)/2 + min_position_y
+        test_gt = np.concatenate((np.expand_dims(hist_gt[-1,:], axis=0), test_gt), axis = 0)
+        
 
         test_ft = results[ID][1]
         find_00 = test_ft[:]!=np.array([0.0, 0.0])
         inds = [ i for i in range(find_00.shape[0]) if (find_00[i] != [False, False])[0] ]
         test_ft = test_ft[inds]
+        # Scale up
+        test_ft[:,0] = (test_ft[:,0]+1)*(max_position_x - min_position_x)/2 + min_position_x
+        test_ft[:,1] = (test_ft[:,1]+1)*(max_position_y - min_position_y)/2 + min_position_y
+        test_ft = np.concatenate((np.expand_dims(hist_gt[-1,:], axis=0), test_ft), axis = 0)
         
         
         if observations[ID][1] == 1:#Peds
@@ -345,18 +364,25 @@ def visualization(ret_nodes, nodes, historyNodesPresent, assumedNodesPresent, tr
             plt.plot(test_gt[:,0], test_gt[:,1], '^-g')
             plt.plot(test_ft[:,0], test_ft[:,1], '^-r')
         
+        x_diff = (test_gt[:,0] - test_ft[:,0])**2
+        y_diff = (test_gt[:,1] - test_ft[:,1])**2
+        dis_diff = np.sqrt(x_diff + y_diff)#distance^2
+        ADE = np.mean(dis_diff)
+        FDE = dis_diff[-1]
+
+
         xmin = min(min(hist_gt[:,0]), min(test_gt[:,0]), min(test_ft[:,0]))
         xmax = max(max(hist_gt[:,0]), max(test_gt[:,0]), max(test_ft[:,0]))
         ymin = min(min(hist_gt[:,1]), min(test_gt[:,1]), min(test_ft[:,1]))
         ymax = max(max(hist_gt[:,1]), max(test_gt[:,1]), max(test_ft[:,1]))
-        STEP = 0.3
+        STEP = 1.0
 
         _object = observation_type[observations[ID][1]]
-        plt.title("Object Type: {}".format(_object))
-        plt.xticks(np.arange(xmin-STEP, xmax+STEP, 0.1))
-        plt.yticks(np.arange(ymin-STEP, ymax+STEP, 0.1))
+        plt.title("Object Type: {}, ADE: {}, FDE: {}".format(_object, round(ADE,3), round(FDE,3)))
+        # plt.xticks(np.arange(xmin-STEP, xmax+STEP, .5))
+        # plt.yticks(np.arange(ymin-STEP, ymax+STEP, .5))
         
-        # plt.axis('equal')
+        plt.axis('equal')
         plt.show()
         
             

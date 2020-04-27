@@ -52,7 +52,7 @@ def main():
     sample_args = parser.parse_args()
 
     # Save directory
-    save_directory = "../save/"
+    save_directory = "../../save_weight/"
     # Define the path for the config file for saved args
     with open(os.path.join(save_directory, "config.pkl"), "rb") as f:
         saved_args = pickle.load(f)
@@ -63,25 +63,30 @@ def main():
         net = net.cuda()
     print("SEQ LENGTH: ", saved_args.seq_length)
     print("PRED LENGTH: ", saved_args.pred_length)
+    print("SELECTED EPOCH: ", sample_args.epoch)
     checkpoint_path = os.path.join(
-        save_directory, "{}-{}-srnn_model_"\
+        save_directory, "4Dgraph.S-{}.P-{}.srnn_model_"\
         .format(saved_args.seq_length, saved_args.pred_length)\
-         + str(sample_args.epoch) + ".tar"
+        # save_directory, "{}-{}-srnn_model_"\
+        # .format(saved_args.seq_length, saved_args.pred_length)\
+         + str(sample_args.epoch)\
+         + ".tar"
     )
     
     if os.path.isfile(checkpoint_path):
-        print("Loading checkpoint")
+        print("Loading checkpoint...")
         checkpoint = torch.load(checkpoint_path)
         # model_iteration = checkpoint['iteration']
         model_epoch = checkpoint["epoch"]
         net.load_state_dict(checkpoint["state_dict"])
-        print("Loaded checkpoint at {}".format(model_epoch))
+        print("Loaded checkpoint at {}, successfully!".format(model_epoch))
 
     dataloader = DataLoader(
         1, sample_args.pred_length + sample_args.obs_length, True, infer=True
     )
 
     dataloader.reset_batch_pointer()
+    xy_scale_param = dataloader.scale_param
 
     # Construct the ST-graph object
     stgraph = ST_GRAPH(1, sample_args.pred_length + sample_args.obs_length)
@@ -144,6 +149,7 @@ def main():
             nodesPresent[sample_args.obs_length - 1],
             nodesPresent[sample_args.obs_length :],
             sample_args.obs_length,
+            xy_scale_param
         )
         
         # Compute mean and final displacement error
